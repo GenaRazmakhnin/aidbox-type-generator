@@ -1,0 +1,1 @@
+export interface Patient { managingOrganization: Reference<hl7-fhir-r4-core.Organization/schema>,/nactive: boolean }

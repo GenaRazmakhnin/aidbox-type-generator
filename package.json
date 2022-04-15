@@ -1,0 +1,19 @@
+{
+  "name": "aidbox-types-geneartor",
+  "version": "1.0.0",
+  "description": "aidbox-types-geneartor",
+  "main": "main.js",
+  "scripts": {
+    "start": "npm exec -- ts-node --transpile-only main.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "ts-node": "^10.1.0",
+    "typescript": "4.5.2",
+    "axios": "^0.26.1"
+  }
+}

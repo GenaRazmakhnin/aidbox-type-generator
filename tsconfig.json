@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "rootDir": ".",
+    "incremental": true,
+    "target": "es2021",
+    "strict": true,
+    "skipLibCheck": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+
+    // Not campatibe with @vercel/ncc https://github.com/vercel/ncc/issues/557
+    "esModuleInterop": false,
+
+    // Enable later
+    // "noUnusedLocals": true,
+    // "noUnusedParameters": true,
+    // "noImplicitReturns": true,
+    // "noFallthroughCasesInSwitch": true,
+
+    "lib": ["ES2021"]
+  },
+  "exclude": ["data", "deployment"]
+}
