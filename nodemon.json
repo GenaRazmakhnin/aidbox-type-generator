@@ -1,0 +1,5 @@
+{
+  "watch": ["parse.ts"],
+  "ext": "ts",
+  "exec": "ts-node parse.ts"
+}

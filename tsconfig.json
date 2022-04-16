@@ -8,10 +8,7 @@
     "module": "commonjs",
     "moduleResolution": "node",
 
-    // Not campatibe with @vercel/ncc https://github.com/vercel/ncc/issues/557
-    "esModuleInterop": false,
-
-    // Enable later
+    "esModuleInterop": true,
     // "noUnusedLocals": true,
     // "noUnusedParameters": true,
     // "noImplicitReturns": true,
@@ -19,5 +16,5 @@
 
     "lib": ["ES2021"]
   },
-  "exclude": ["data", "deployment"]
+  "exclude": []
 }
