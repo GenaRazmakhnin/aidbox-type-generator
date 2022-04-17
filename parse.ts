@@ -30,19 +30,32 @@ const capitalize = (str: string): string => `${str.charAt(0).toUpperCase()}${str
 const excludeSymbols = [
     "hl7-fhir-r4-core.value-set.",
     "hl7-fhir-r4-core.search.",
-    "aidbox/service",
-    "zen/validation-fn",
+    "aidbox/",
     "hl7-fhir-r4-core.structuredefinition",
-    "zenbox.api"
+    "zenbox.api",
+    "fhir.compartment",
+    "aidbox.",
+    "zenbox/",
+    "zen/",
+    "zen.fhir/nested-schema",
+    "fhir/complex-type",
+    "zen.fhir/profile-schema",
+    "fhir/primitive-type",
+    "zen.fhir/base-schema",
+    //TODO: need process this type
+    "zen.fhir/value-set",
+    "fhir.bulk.export/bulk-export-status"
 ]
 
-const zenConfirms: Record<string, string> = {}
-const zenPrimitives: Record<string, string> = {}
 
-const findConfirms = (schema: any, confirms: any) => [...new Set(confirms.map((c: string) => {
+const zenConfirms: Record<string, string> = {}
+
+const findConfirms = (schema: any, confirms: any) => [...new Set(confirms?.map((c: string) => {
+    if(c === 'zenbox/Resource'){
+        return null;
+    }
     const el = schema[c];
     if (!el) {
-        console.log('Confirms missed', c);
         return null
     }
     if (zenConfirms[c]) {
@@ -74,8 +87,10 @@ const parseZenVector = (schema: any, vector: any) => {
     if (vector.every?.type === 'zen/datetime'){
         return "dateTime"
     }
-    console.log("11111",vector)
-    return "";
+    if (!vector.every?.type && !vector.every?.confirms){
+        return "any"
+    }
+    return "any";
 }
 
 
@@ -96,8 +111,14 @@ const parseZenMap = (schema: any, keys: any, required: string[] = []) => {
         } else if (value['type']) {
             if (value['type'] === 'zen/vector') {
                 const type = parseZenVector(schema, value);
-                const baseTypes = findConfirms(schema, value.every.confirms);
-                if (baseTypes.length === 1){
+                const baseTypes = findConfirms(schema, value.every?.confirms);
+                if (baseTypes.length < 1 && typeof type === 'string'){
+                    return [key in required ? key : `${key}?`, {
+                        type: `Array<${type}>`,
+                        desc: value.every?.["zen/desc"]
+                    }]
+                }
+                if (baseTypes.length === 1 && typeof type === 'string'){
                     return [key in required ? key : `${key}?`, {
                         type: `Array<${type}>`,
                         desc: value.every?.["zen/desc"]
@@ -110,13 +131,65 @@ const parseZenMap = (schema: any, keys: any, required: string[] = []) => {
                     desc: value.every?.["zen/desc"]
                 }]
             }
+
             if (value['type'] === 'zen/string'){
                 return [key in required ? key : `${key}?`, {
                     type: "string",
                     desc: value["zen/desc"]
                 }]
             }
+            if (value['type'] === 'zen/boolean'){
+                return [key in required ? key : `${key}?`, {
+                    type: "boolean",
+                    desc: value["zen/desc"]
+                }]
+            }
+            if (value.type === 'zen/datetime'){
+                return [key in required ? key : `${key}?`, {
+                    type: "dateTime",
+                    desc: value["zen/desc"]
+                }]
+            }
+            if (value.type === 'zen/date'){
+                return [key in required ? key : `${key}?`, {
+                    type: "date",
+                    desc: value["zen/desc"]
+                }]
+            }
+
+            if (value['type'] === 'zen/integer'){
+                return [key in required ? key : `${key}?`, {
+                    type: "integer",
+                    desc: value["zen/desc"]
+                }]
+            }
+            if (value['type'] === 'zen/number'){
+                return [key in required ? key : `${key}?`, {
+                    type: value?.confirms ? value.confirms[0].split('/')[1] : "number",
+                    desc: value["zen/desc"]
+                }]
+            }
+            if (value['type'] === 'zen/any'){
+                return [key in required ? key : `${key}?`, {
+                    type: `Record<string,any>`,
+                    desc: value["zen/desc"]
+                }]
+            }
+            if (value['type'] === 'zen/set'){
+                return [key in required ? key : `${key}?`, {
+                    type: "any",
+                    desc: value["zen/desc"]
+                }]
+            }
             if (value['type'] === 'zen/map'){
+                if (value['validation-type'] === 'open'){
+                    if (value['validation-type'] === 'open'){
+                        return [key in required ? key : `${key}?`, {
+                            type: `any`,
+                            desc: value["zen/desc"]
+                        }]
+                    }
+                }
                 if(value['confirms']) {
                     const baseTypes = findConfirms(schema, value.confirms);
                     if (value['validation-type'] === 'open'){
@@ -125,6 +198,7 @@ const parseZenMap = (schema: any, keys: any, required: string[] = []) => {
                             desc: value["zen/desc"]
                         }]
                     }
+
                     if (value?.keys) {
                         return [key in required ? key : `${key}?`, {
                             baseTypes: baseTypes,
@@ -144,21 +218,53 @@ const parseZenMap = (schema: any, keys: any, required: string[] = []) => {
                         desc: value["zen/desc"]
                     }]
                 }
+                if (value?.values?.type === 'zen/any'){
+                    return [key in required ? key : `${key}?`, {
+                        type: `Record<string,any>`,
+                        desc: value["zen/desc"]
+                    }]
+                }
+                if (value?.values?.keys){
+                    return [key in required ? key : `${key}?`, {
+                        type: parseZenMap(schema, value.values.keys, value.values?.['require']),
+                        desc: value["zen/desc"]
+                    }]
+                }
                 console.log("map", value)
                 return [key in required ? key : `${key}?`, {
                     type: "map-any",
                     desc: value["zen/desc"]
                 }]
             }
-            console.log("any type", key, value)
 
         }
+        //TODO: process this later
+        if (value['fhir/polymorphic']) {
+            return [key in required ? key : `${key}?`, {
+                type: "map-any",
+                desc: value["zen/desc"]
+            }]
+        }
+        if (value['validation-type'] === 'open') {
+            return [key in required ? key : `${key}?`, {
+                type: "any",
+                desc: value["zen/desc"]
+            }]
+        }
+        if (!value['type']){
+            return [key in required ? key : `${key}?`, {
+                type: "any",
+                desc: value["zen/desc"]
+            }]
+        }
+        console.log("any type", key, value)
+        process.exit(1);
         return [key, {type: "any"}]
     }))
 }
 
 
-const rpcParamsType = (type: string, validationType?: string) => {
+const rpcParamsType = (schema:any, type: string, validationType?: string) => {
     switch (type) {
         case "zen/map":
             return validationType === "open" ? "Record<string,any>" : "need-map"
@@ -172,60 +278,77 @@ const parseZenSchema = async () => {
     const filteredSchema = Object.fromEntries(Object.entries<any>(schema)
         .filter(([key, value]) => !excludeSymbols.some((symbol) => key.startsWith(symbol))
         ));
-    const result: any = []
-
-    for (const [key, value] of Object.entries<any>(filteredSchema).splice(9, 1)) {
-        if (value['zen.fhir/profileUri']){
-            continue;
+    const result: any = Object.entries<any>(filteredSchema).map(([key,value]) => {
+        if (value['zen/tags'].includes('fhir/primitive-type')){
+           return {
+               desc: value["zen/desc"] || null,
+               name: value['zen/name'].split('/')[1],
+               primitive: value['type'] === 'zen/map' ?  `Record<string,any>` : value['type'].split('/')[1]
+           }
         }
-        console.log(key,value);
+
+        if (value['zen.fhir/profileUri'] && value['zen/tags']?.includes('zen.fhir/structure-schema')){
+            return null;
+        }
+        if (value['zen/tags'].includes('zen.fhir/search')){
+            return null;
+        }
+        if (value['zen/tags'].includes('zen/primitive')){
+            return null;
+        }
 
         if (value['zen/tags']?.includes('zenbox/rpc')) {
             const [namespace, name] = key.split('/');
             const paramsType = value?.params?.type;
-            const type = {
+
+            return {
                 desc: value["zen/desc"] || null,
                 name: `Rpc${capitalize(namespace.split(".").reverse()[0])}${name.split('-').map(n => capitalize(n)).join("")}`,
                 def: {
                     method: key,
-                    params: rpcParamsType(paramsType, value?.params?.['validation-type'])
+                    params: rpcParamsType(filteredSchema, paramsType, value?.params?.['validation-type'])
                 }
             }
-            result.push(type);
         } else {
             let name;
             if (value?.['zen/name']?.startsWith('fhir/')){
                 name = value['zen/name'].split('/')[1];
             } else {
-                name = value["zen.fhir/type"] || value["resourceType"];
+                name = value["zen.fhir/type"] || value["resourceType"] || value['zen/name'].split('/')[1];
             }
             if (!name) {
                 console.log("Name missed for ", key)
             }
             const required = value['require'];
-            const type = {
-                desc: value["zen/desc"] || null,
-                name,
-                extends: value['confirms'] ? findConfirms(filteredSchema, value['confirms']).join(' | ') : [],
-                defs: parseZenMap(filteredSchema, value.keys, required)
+            let type;
+
+            if (value['zen/tags'].includes('zenbox/persistent') && ( value['validation-type'] === 'open' || value['values']?.type === 'zen/any')){
+                type = {
+                    desc: value["zen/desc"] || null,
+                    name,
+                    extends: value['confirms'] ? findConfirms(filteredSchema, value['confirms']).join(' | ') : [],
+                    defs: {
+                        "[key:string]?":'any'
+                    }
+                }
+            } else {
+                type = {
+                    desc: value["zen/desc"] || null,
+                    name,
+                    extends: value['confirms'] ? findConfirms(filteredSchema, value['confirms']).join(' | ') : [],
+                    defs: parseZenMap(filteredSchema, value.keys, required)
+                }
             }
-            result.push(type);
-            console.dir(type, {depth: 5})
-            process.exit(1)
+            return type;
         }
-    }
-    console.log(result);
+    }).filter(Boolean)
+
+    await fs.writeFile('./types.json', JSON.stringify(result, null ,2))
 }
 
 if (require.main === module) {
     const start = Date.now();
-    // if (!process.env.USE_CACHE) {
-    //     console.log(
-    //         "Cache is disabled. Use `make generate-aidbox-types USE_CACHE=1` to cache aidbox requests and speed up types generation",
-    //     );
-    // }
     console.log("Generating types…");
     parseZenSchema();
-    // getSchemas();
 
 }
