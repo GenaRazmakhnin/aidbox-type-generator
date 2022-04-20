@@ -46,40 +46,49 @@ const excludeNamespaces = [
     /zen.fhir/
 ]
 
-const excludedTags = {};
+const excludedTags = [];
 const schema: Record<string, any> = {};
 
 
 const zenConfirms: Record<string, string> = {}
 
-const findConfirms = (schema: any, confirms: any) => [...new Set(confirms?.map((c: string) => {
-    if (c === 'zenbox/Resource') {
-        return null;
-    }
-    const el = schema[c];
-    if (!el) {
-        return null
-    }
-    if (zenConfirms[c]) {
-        return zenConfirms[c]
-    }
-    const name = el["zen.fhir/type"] || el["resourceType"] || el['zen/name'].split('/')[1] || `any-${c}`
+const findConfirms = async (confirms: any) => {
+    const result = new Set()
+    for (const confirm of confirms) {
+        if (confirm === 'zenbox/Resource') {
+            continue;
+        }
+        let el = schema[confirm];
+        if (!el) {
+            const {data: {result: {model: definition}}} = await box.post("/rpc", `{
+            :method aidbox.zen/symbol
+            :params { :name ${confirm}}
+        }`, {headers: {"Content-Type": "application/edn"}});
+            schema[confirm] = definition;
+            el = definition
+        }
 
-    zenConfirms[c] = name;
-    return name;
-}))]
-    .filter(Boolean);
+        if (zenConfirms[confirm]) {
+            result.add(zenConfirms[confirm])
+        }
+        const name = el["zen.fhir/type"] || el["resourceType"] || el['zen/name'].split('/')[1] || `any-${confirm}`
 
-const parseZenVector = (schema: any, vector: any) => {
+        zenConfirms[confirm] = name;
+        result.add(name);
+    }
+    return Array.from(result);
+}
+
+const parseZenVector = async (vector: any) => {
     if (!vector.every['type'] && vector.every['confirms']) {
         if (vector.every?.['zen.fhir/reference']?.refers) {
-            const refers = findConfirms(schema, vector.every['zen.fhir/reference']?.refers);
+            const refers = await findConfirms(vector.every['zen.fhir/reference']?.refers);
             return refers?.length ? `Reference<${refers.join(' | ')}>` : `Reference`
         }
-        return findConfirms(schema, vector.every['confirms']).join(' | ')
+        return (await findConfirms(vector.every['confirms'])).join(' | ')
     } else if (vector.every.type === 'zen/map') {
         if (vector.every.keys) {
-            return parseZenMap(schema, vector.every.keys, vector.every?.require);
+            return await parseZenMap(vector.every.keys, vector.every?.require);
         }
         return "any"
     }
@@ -96,20 +105,23 @@ const parseZenVector = (schema: any, vector: any) => {
 }
 
 
-const parseZenMap = (schema: any, keys: any, required: string[] = []) => {
-    return Object.fromEntries(Object.entries<any>(keys).map(([key, value]): [string, any] => {
+const parseZenMap = async (keys: any, required: string[] = []) => {
+    const result = [];
+    for (const [key,value] of  Object.entries<any>(keys)) {
         if (!value['type'] && value['confirms']) {
             if (value['zen.fhir/reference']?.refers) {
-                const refers = findConfirms(schema, value['zen.fhir/reference']?.refers);
-                return [key in required ? key : `${key}?`, {
+                const refers = await findConfirms(value['zen.fhir/reference']?.refers);
+                result.push([key in required ? key : `${key}?`, {
                     type: refers?.length ? `Reference<${refers.join(' | ')}>` : `Reference`,
                     desc: value["zen/desc"]
-                }]
+                }])
+                continue;
             }
-            return [key in required ? key : `${key}?`, {
+            result.push([key in required ? key : `${key}?`, {
                 type: findConfirms(schema, value['confirms']).join(' | '),
                 desc: value["zen/desc"]
-            }]
+            }])
+            continue;
         } else if (value['type']) {
             if (value['type'] === 'zen/vector') {
                 const type = parseZenVector(schema, value);
@@ -277,21 +289,21 @@ const rpcParamsType = (type: string, validationType?: string) => {
 
 const parseZenSchema = async () => {
     const symbols: string[] = await loadSymbols();
-    for (const symbol of symbols.splice(13,1)) {
+    for (const symbol of symbols.splice(13, 1)) {
         const {data: {result: {model: definition}}} = await box.post("/rpc", `{
             :method aidbox.zen/symbol
             :params { :name ${symbol}}
         }`, {headers: {"Content-Type": "application/edn"}});
         schema[symbol] = definition;
         console.log(symbol, definition);
-         if (definition['zen.fhir/profileUri'] && definition['zen/tags']?.includes('zen.fhir/structure-schema')) {
-             continue;
-         }
+        if (definition['zen.fhir/profileUri'] && definition['zen/tags']?.includes('zen.fhir/structure-schema')) {
+            continue;
+        }
         if (definition['zen/tags']?.includes('zenbox/rpc')) {
-                const [namespace, name] = symbol.split('/');
-                const paramsType = definition?.params?.type;
-                const type =
-               {
+            const [namespace, name] = symbol.split('/');
+            const paramsType = definition?.params?.type;
+            const type =
+                {
                     desc: definition["zen/desc"] || null,
                     name: `Rpc${capitalize(namespace.split(".").reverse()[0])}${name.split('-').map(n => capitalize(n)).join("")}`,
                     def: {
@@ -299,7 +311,41 @@ const parseZenSchema = async () => {
                         params: rpcParamsType(paramsType, definition?.params?.['validation-type'])
                     }
                 }
-                console.log(type)
+            console.log(type)
+        } else {
+            let name;
+            if (definition?.['zen/name']?.startsWith('fhir/')) {
+                name = definition['zen/name'].split('/')[1];
+            } else {
+                name = definition["zen.fhir/type"] || definition["resourceType"] || definition['zen/name'].split('/')[1];
+            }
+            if (!name) {
+                console.log("Name missed for ", symbol)
+            }
+            const required = definition['require'];
+            let type;
+
+            const confirms = await findConfirms(definition['confirms']);
+
+            if (definition['zen/tags'].includes('zenbox/persistent') && (definition['validation-type'] === 'open' || definition['values']?.type === 'zen/any')) {
+                type = {
+                    desc: definition["zen/desc"] || null,
+                    name,
+                    extends: definition['confirms'] ? confirms.join(' | ') : [],
+                    defs: {
+                        "[key:string]?": 'any'
+                    }
+                }
+            } else {
+
+                type = {
+                    desc: definition["zen/desc"] || null,
+                    name,
+                    extends: definition['confirms'] ? confirms.join(' | ') : [],
+                    defs: parseZenMap( definition.keys, required)
+                }
+            }
+            console.log(type);
         }
         process.exit(1)
 
