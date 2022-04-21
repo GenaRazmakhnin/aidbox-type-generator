@@ -43,7 +43,7 @@ const loadSymbols = async () => {
   const finalResult = symbols.filter(
     (s) => !excludedTags.some((exc) => s.startsWith(exc))
   );
-  await fs.writeFile("./symbols.json", JSON.stringify(finalResult));
+  //   await fs.writeFile("./symbols.json", JSON.stringify(finalResult));
   return finalResult;
 };
 
@@ -68,6 +68,54 @@ const excludedTags = [
   "hl7-fhir-r4-core.DiagnosticReport-geneticsFamilyMemberHistory/schema",
   "hl7-fhir-r4-core.search.",
   "hl7-fhir-r4-core.value-set.",
+  "hl7-fhir-r4-core.DiagnosticReport-geneticsAnalysis/schema",
+  "hl7-fhir-r4-core.DiagnosticReport-geneticsReferences/schema",
+  "hl7-fhir-r4-core.allergyintolerance-substanceExposureRisk/schema",
+  "hl7-fhir-r4-core.capabilitystatement-search-parameter-combination/schema",
+  "hl7-fhir-r4-core.codesystem-alternate/schema",
+  "hl7-fhir-r4-core.codesystem-history/schema",
+  "hl7-fhir-r4-core.codesystem-otherName/schema",
+  "hl7-fhir-r4-core.codesystem-usage/schema",
+  "hl7-fhir-r4-core.condition-dueTo/schema",
+  "hl7-fhir-r4-core.condition-occurredFollowing/schema",
+  "hl7-fhir-r4-core.cqf-measureInfo/schema",
+  "hl7-fhir-r4-core.cqf-relativeDateTime/schema",
+  "hl7-fhir-r4-core.devicerequest-patientInstruction/schema",
+  "hl7-fhir-r4-core.elementdefinition-allowedUnits/schema",
+  "hl7-fhir-r4-core.elementdefinition-bestpractice/schema",
+  "hl7-fhir-r4-core.elementdefinition-inheritedExtensibleValueSet/schema",
+  "hl7-fhir-r4-core.elementdefinition-maxValueSet/schema",
+  "hl7-fhir-r4-core.elementdefinition-minValueSet/schema",
+  "hl7-fhir-r4-core.family-member-history-genetics-parent/schema",
+  "hl7-fhir-r4-core.family-member-history-genetics-sibling/schema",
+  "hl7-fhir-r4-core.familymemberhistory-abatement/schema",
+  "hl7-fhir-r4-core.geolocation/schema",
+  "hl7-fhir-r4-core.goal-acceptance/schema",
+  "hl7-fhir-r4-core.goal-relationship/schema",
+  "hl7-fhir-r4-core.hla-genotyping-results-glstring/schema",
+  "hl7-fhir-r4-core.hla-genotyping-results-haploid/schema",
+  "hl7-fhir-r4-core.maxValue/schema",
+  "hl7-fhir-r4-core.minValue/schema",
+  "hl7-fhir-r4-core.oauth-uris/schema",
+  "hl7-fhir-r4-core.observation-geneticsAllele/schema",
+  "hl7-fhir-r4-core.observation-geneticsAminoAcidChange/schema",
+  "hl7-fhir-r4-core.observation-geneticsAncestry/schema",
+  "hl7-fhir-r4-core.observation-geneticsPhaseSet/schema",
+  "hl7-fhir-r4-core.observation-geneticsVariant/schema",
+  "hl7-fhir-r4-core.patient-animal/schema",
+  "hl7-fhir-r4-core.patient-citizenship/schema",
+  "hl7-fhir-r4-core.patient-nationality/schema",
+  "hl7-fhir-r4-core.patient-proficiency/schema",
+  "hl7-fhir-r4-core.procedure-directedBy/schema",
+  "hl7-fhir-r4-core.questionnaire-constraint/schema",
+  "hl7-fhir-r4-core.relative-date/schema",
+  "hl7-fhir-r4-core.servicerequest-geneticsItem/schema",
+  "hl7-fhir-r4-core.specimen-processingTime/schema",
+  "hl7-fhir-r4-core.timing-daysOfCycle/schema",
+  "hl7-fhir-r4-core.translation/schema",
+  "hl7-fhir-r4-core.valueset-expand-group/schema",
+  "hl7-fhir-r4-core.valueset-otherName/schema",
+  "hl7-fhir-r4-core.valueset-usage/schema",
 ];
 const schema: Record<string, any> = {};
 const zenConfirms: Record<string, string> = {};
@@ -140,6 +188,8 @@ const parseZenVector = async (vector: any): Promise<any> => {
   return "'vector-any'";
 };
 
+const wrapKey = (key: string) => (key.includes("-") ? `'${key}'` : key);
+
 const parseZenMap = async (
   keys: any,
   required: string[] = []
@@ -150,7 +200,7 @@ const parseZenMap = async (
       if (value["zen.fhir/reference"]?.refers) {
         const refers = await findConfirms(value["zen.fhir/reference"]?.refers);
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: refers?.length
               ? `Reference<'${refers.join("' | '")}'>`
@@ -161,7 +211,7 @@ const parseZenMap = async (
         continue;
       }
       result.push([
-        key in required ? key : `${key}?`,
+        required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
         {
           type: (await findConfirms(value["confirms"])).join(" | "),
           desc: value["zen/desc"],
@@ -174,7 +224,7 @@ const parseZenMap = async (
         const baseTypes = await findConfirms(value.every?.confirms);
         if (baseTypes.length < 1 && typeof type === "string") {
           result.push([
-            key in required ? key : `${key}?`,
+            required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
               type: `Array<${type}>`,
               desc: value.every?.["zen/desc"],
@@ -184,7 +234,7 @@ const parseZenMap = async (
         }
         if (baseTypes.length === 1 && typeof type === "string") {
           result.push([
-            key in required ? key : `${key}?`,
+            required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
               type: `Array<${type}>`,
               desc: value.every?.["zen/desc"],
@@ -193,7 +243,7 @@ const parseZenMap = async (
           continue;
         }
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             array: true,
             baseTypes: baseTypes?.length ? baseTypes : null,
@@ -206,7 +256,7 @@ const parseZenMap = async (
 
       if (value["type"] === "zen/string") {
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: "string",
             desc: value["zen/desc"],
@@ -216,7 +266,7 @@ const parseZenMap = async (
       }
       if (value["type"] === "zen/boolean") {
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: "boolean",
             desc: value["zen/desc"],
@@ -226,7 +276,7 @@ const parseZenMap = async (
       }
       if (value.type === "zen/datetime") {
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: "dateTime",
             desc: value["zen/desc"],
@@ -236,7 +286,7 @@ const parseZenMap = async (
       }
       if (value.type === "zen/date") {
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: "date",
             desc: value["zen/desc"],
@@ -247,7 +297,7 @@ const parseZenMap = async (
 
       if (value["type"] === "zen/integer") {
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: "integer",
             desc: value["zen/desc"],
@@ -257,7 +307,7 @@ const parseZenMap = async (
       }
       if (value["type"] === "zen/number") {
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: value?.confirms ? value.confirms[0].split("/")[1] : "number",
             desc: value["zen/desc"],
@@ -267,7 +317,7 @@ const parseZenMap = async (
       }
       if (value["type"] === "zen/any") {
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: `Record<string,any>`,
             desc: value["zen/desc"],
@@ -278,7 +328,7 @@ const parseZenMap = async (
       if (value["type"] === "zen/set") {
         console.log(key, value);
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             array: true,
             type: "any",
@@ -291,7 +341,7 @@ const parseZenMap = async (
         if (value["validation-type"] === "open") {
           if (value["validation-type"] === "open") {
             result.push([
-              key in required ? key : `${key}?`,
+              required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
               {
                 type: `any`,
                 desc: value["zen/desc"],
@@ -304,7 +354,7 @@ const parseZenMap = async (
           const baseTypes = await findConfirms(value.confirms);
           if (value["validation-type"] === "open") {
             result.push([
-              key in required ? key : `${key}?`,
+              required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
               {
                 type: `${baseTypes.join(" & ")} & any`,
                 desc: value["zen/desc"],
@@ -315,7 +365,7 @@ const parseZenMap = async (
 
           if (value?.keys) {
             result.push([
-              key in required ? key : `${key}?`,
+              required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
               {
                 baseTypes: baseTypes,
                 subType: await parseZenMap(value["keys"], value["require"]),
@@ -325,7 +375,7 @@ const parseZenMap = async (
             continue;
           }
           result.push([
-            key in required ? key : `${key}?`,
+            required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
               type: "any",
               desc: value["zen/desc"],
@@ -335,7 +385,7 @@ const parseZenMap = async (
         }
         if (value?.keys) {
           result.push([
-            key in required ? key : `${key}?`,
+            required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
               type: await parseZenMap(value["keys"], value["require"]),
               desc: value["zen/desc"],
@@ -345,7 +395,7 @@ const parseZenMap = async (
         }
         if (value?.values?.type === "zen/any") {
           result.push([
-            key in required ? key : `${key}?`,
+            required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
               type: `Record<string,any>`,
               desc: value["zen/desc"],
@@ -355,7 +405,7 @@ const parseZenMap = async (
         }
         if (value?.values?.keys) {
           result.push([
-            key in required ? key : `${key}?`,
+            required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
               type: await parseZenMap(
                 value.values.keys,
@@ -368,7 +418,7 @@ const parseZenMap = async (
         }
         console.log("map", value);
         result.push([
-          key in required ? key : `${key}?`,
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
           {
             type: "'map-any'",
             desc: value["zen/desc"],
@@ -380,7 +430,7 @@ const parseZenMap = async (
     //TODO: process this later
     if (value["fhir/polymorphic"]) {
       result.push([
-        key in required ? key : `${key}?`,
+        required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
         {
           type: "'map-any'",
           desc: value["zen/desc"],
@@ -390,7 +440,7 @@ const parseZenMap = async (
     }
     if (value["validation-type"] === "open") {
       result.push([
-        key in required ? key : `${key}?`,
+        required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
         {
           type: "any",
           desc: value["zen/desc"],
@@ -400,7 +450,7 @@ const parseZenMap = async (
     }
     if (!value["type"]) {
       result.push([
-        key in required ? key : `${key}?`,
+        required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
         {
           type: "any",
           desc: value["zen/desc"],
@@ -444,6 +494,17 @@ const getPrimitiveTypes = (type: string): string => {
   }
 };
 
+const normalizeConfirms = (confirms: any, name: string) => {
+  if (confirms?.length === 0) {
+    return {};
+  } else if (confirms.length === 1 && confirms[0] === name) {
+    return {};
+  } else {
+    const cleared = confirms.filter((c: string) => c !== name);
+    return confirms?.length === 0 ? {} : { extends: cleared };
+  }
+};
+
 const parseZenSchema = async () => {
   const symbols: string[] = await loadSymbols();
   const result: any = [];
@@ -463,6 +524,13 @@ const parseZenSchema = async () => {
 
     schema[symbol] = definition;
     let type;
+
+    if (
+      definition["zen/tags"].length === 1 &&
+      definition["zen/tags"][0] === "zen/schema"
+    ) {
+      continue;
+    }
 
     if (definition["zen/tags"].includes("zen.fhir/search")) {
       continue;
@@ -489,6 +557,7 @@ const parseZenSchema = async () => {
         definition["zen.fhir/type"] ||
         definition["resourceType"] ||
         definition["zen/name"].split("/")[1];
+
       if (!name) {
         console.log("Name missed for ", symbol);
       }
@@ -517,11 +586,11 @@ const parseZenSchema = async () => {
       ) {
         if (!definition["zen/name"].split(".")[1].includes("-")) {
           if (confirms.join(", ") !== name) {
-            type = {
+            const resultConfirms = (type = {
               desc: definition["zen/desc"] || null,
               name,
-              extends: definition["confirms"] ? confirms.join(", ") : [],
-            };
+              ...normalizeConfirms(confirms, name),
+            });
           } else {
             const newName = definition["zen/name"]
               .split("/")[0]
@@ -530,7 +599,7 @@ const parseZenSchema = async () => {
             type = {
               desc: definition["zen/desc"] || null,
               name: newName,
-              extends: definition["confirms"] ? confirms.join(", ") : [],
+              ...normalizeConfirms(confirms, newName),
             };
           }
         }
@@ -542,7 +611,7 @@ const parseZenSchema = async () => {
         type = {
           desc: definition["zen/desc"] || null,
           name,
-          extends: definition["confirms"] ? confirms.join(", ") : [],
+          ...normalizeConfirms(confirms, name),
           defs: {
             "[key:string]?": "any",
           },
@@ -551,7 +620,7 @@ const parseZenSchema = async () => {
         type = {
           desc: definition["zen/desc"] || null,
           name,
-          extends: definition["confirms"] ? confirms.join(", ") : [],
+          ...normalizeConfirms(confirms, name),
           defs: await parseZenMap(definition.keys, required),
         };
       }
@@ -559,7 +628,17 @@ const parseZenSchema = async () => {
     result.push(type);
   }
 
-  await fs.writeFile("./types.json", JSON.stringify(result, null, 2));
+  const finalResult = result
+    .filter(Boolean)
+    .reduce((acc: Record<string, any>, el: any) => {
+      const { name, ...rest } = el;
+      if (acc[name]) {
+        return { ...acc, [name]: merge(acc[name], rest) };
+      }
+      return { ...acc, [name]: rest };
+    }, {});
+
+  await fs.writeFile("./types.json", JSON.stringify(finalResult, null, 2));
 };
 
 const writeNestedType = (defs: any) => {
@@ -575,7 +654,7 @@ const writeNestedType = (defs: any) => {
         type += ` ${key}: Array<${value.subType}>;\n`;
       } else {
         type += ` ${key}: Array<${
-          value?.baseTypes && value.baseTypes.join(" & ") + " & "
+          value?.baseTypes ? value.baseTypes.join(" & ") + " & " : ""
         } {\n${writeNestedType(value.subType)}}>;\n`;
       }
     } else if (value?.baseTypes) {
@@ -597,23 +676,22 @@ const writeTypes = async () => {
   const schema: any[] = JSON.parse(
     (await fs.readFile("./types.json")).toString()
   );
-  for (const element of schema
-    .filter((s) => !s?.name?.startsWith("Rpc"))
-    .filter(Boolean)) {
+
+  for (const [name, element] of Object.entries(schema)) {
+    if (name.startsWith("Rpc")) {
+      continue;
+    }
     if (element.desc) {
       types += `/*${element.desc.replace(/\r?\n|\r/, "")}*/\n`;
     }
     if (element.type) {
-      types += `export type ${element.name} = ${element.type};\n`;
+      types += `export type ${name} = ${element.type};\n`;
     } else if (!element.defs && !element.type) {
-      types += `export interface ${element.name} ${
+      types += `export interface ${name} ${
         element.extends && "extends " + element.extends
       } {}\n`;
     } else {
-      console.log(
-        typeof element.extends === "string" || element.extends?.length > 0
-      );
-      types += `export interface ${element.name} ${
+      types += `export interface ${name} ${
         (typeof element.extends === "string" && element.extends !== "") ||
         element.extends?.length > 0
           ? "extends " + element.extends
@@ -628,12 +706,14 @@ const writeTypes = async () => {
     }
   }
   await fs.writeFile("generated-types.ts", types);
-  // process.exit(1);
 };
 
 if (require.main === module) {
   const start = Date.now();
   console.log("Generating types…");
-  //   parseZenSchema();
-  writeTypes();
+  parseZenSchema()
+    .then(() => writeTypes())
+    .then(() => console.log("Generating type finished"));
+  //   writeTypes();
+  console.log("Generating type finished");
 }
