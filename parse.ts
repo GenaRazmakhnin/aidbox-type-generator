@@ -1,8 +1,6 @@
-import { ExampleScenario } from "./generated-types";
 import * as fs from "fs/promises";
 import axios from "axios";
 import merge from "./merge";
-import prettier from "prettier";
 
 const box = axios.create({
   baseURL: "http://localhost:8090",
