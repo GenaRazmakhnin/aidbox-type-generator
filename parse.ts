@@ -11,10 +11,6 @@ const box = axios.create({
 });
 
 const loadSymbols = async () => {
-  const exist = await fs.stat("./symbols.json").catch(() => false);
-  if (exist) {
-    return JSON.parse((await fs.readFile("./symbols.json")).toString());
-  }
   const {
     data: { result: ns },
   } = await box.post("/rpc", {
@@ -117,9 +113,11 @@ const excludedTags = [
   "hl7-fhir-r4-core.valueset-otherName/schema",
   "hl7-fhir-r4-core.valueset-usage/schema",
 ];
+
 const schema: Record<string, any> = {};
 const zenConfirms: Record<string, string> = {};
 const primitiveTypes: Record<string, any> = {};
+const valuesSets: Record<string, any> = {};
 
 const findConfirms = async (confirms: any = []) => {
   const result = new Set();
@@ -189,7 +187,11 @@ const parseZenVector = async (
     }
     return "'vector-any'";
   } else if (vector.every?.type === "zen/string") {
-    return "string";
+    if (vector.every?.enum) {
+      return vector.every.enum.map((e: any) => `"${e.value}"`).join(" | ");
+    } else {
+      return "string";
+    }
   } else if (vector.every?.type === "zen/datetime") {
     return "dateTime";
   } else if (!vector.every?.type && !vector.every?.confirms) {
@@ -201,6 +203,33 @@ const parseZenVector = async (
 
 const wrapKey = (key: string) => (key.includes("-") ? `'${key}'` : key);
 
+const loadValueSet = async (symbol: string) => {
+  if (valuesSets[symbol]) {
+    return valuesSets[symbol];
+  }
+  const {
+    data: {
+      result: { model: definition },
+    },
+  } = await box.post(
+    "/rpc",
+    `{
+                          :method aidbox.zen/symbol
+                          :params { :name ${symbol}}
+                      }`,
+    { headers: { "Content-Type": "application/edn" } }
+  );
+  const url = definition["uri"];
+  const {
+    data: { entry: concepts },
+  } = await box.get(`/Concept?valueset=${url}`);
+
+  const values = concepts.map((e: any) => e.resource.code);
+  valuesSets[symbol] = values;
+  console.log(`ValueSet ${symbol} loaded`);
+  return values;
+};
+
 const parseZenMap = async (
   keys: any,
   required: string[] = [],
@@ -209,7 +238,19 @@ const parseZenMap = async (
   const result = [];
   for (const [key, value] of Object.entries<any>(keys)) {
     if (!key.startsWith("_")) {
-      if (!value["type"] && value["confirms"]) {
+      if (value["zen.fhir/value-set"]) {
+        const values = await loadValueSet(value["zen.fhir/value-set"].symbol);
+        result.push([
+          required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
+          {
+            type:
+              values.map((v: string) => `"${v}"`).join(" | ") ||
+              (await findConfirms(value["confirms"])).join(" | ") ||
+              "'confirms-any'",
+            desc: value["zen/desc"],
+          },
+        ]);
+      } else if (!value["type"] && value["confirms"]) {
         if (value["zen.fhir/reference"]?.refers) {
           const refers = await findConfirms(
             value["zen.fhir/reference"]?.refers
@@ -269,7 +310,9 @@ const parseZenMap = async (
           result.push([
             required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
-              type: "string",
+              type: value?.enum
+                ? value.enum.map((e: any) => `"${e.value}"`).join(" | ")
+                : "string",
               desc: value["zen/desc"],
             },
           ]);
@@ -495,6 +538,7 @@ const normalizeConfirms = (confirms: any, name: string) => {
 const parseZenSchema = async () => {
   const symbols: string[] = await loadSymbols();
   const result: any = [];
+
   for (const symbol of symbols) {
     const {
       data: {
@@ -503,9 +547,9 @@ const parseZenSchema = async () => {
     } = await box.post(
       "/rpc",
       `{
-            :method aidbox.zen/symbol
-            :params { :name ${symbol}}
-        }`,
+              :method aidbox.zen/symbol
+              :params { :name ${symbol}}
+          }`,
       { headers: { "Content-Type": "application/edn" } }
     );
 
@@ -585,6 +629,7 @@ const parseZenSchema = async () => {
             .reverse()[0];
           const inlineType = getPrimitiveTypes(definition["type"]);
           primitiveTypes[newName] = inlineType;
+
           type = {
             desc: definition["zen/desc"] || null,
             name: newName,
@@ -652,36 +697,44 @@ const parseZenSchema = async () => {
   await fs.writeFile("./types.json", JSON.stringify(finalResult, null, 2));
 };
 
-const writeNestedType = (defs: any) => {
+const writeNestedType = (defs: any, ident: number) => {
   let type = "";
   for (const [key, value] of Object.entries<any>(defs)) {
     if (value.desc) {
-      type += ` /* ${value.desc.replace(/\r?\n|\r/, "")} */\n`;
+      type += `${fillIdent(ident)}/* ${value.desc.replace(
+        /\r?\n|\r/,
+        ""
+      )} */\n`;
     }
     if (typeof value.type === "string") {
-      type += ` ${key}: ${value.type};\n `;
+      type += `${fillIdent(ident)}${key}: ${value.type};\n`;
     } else if (value?.array) {
       if (value?.baseTypes && value.baseTypes.join(" | ") === value?.subType) {
-        type += ` ${key}: Array<${value.subType}>;\n`;
+        type += `${fillIdent(ident)}${key}: Array<${value.subType}>;\n`;
       } else {
-        type += ` ${key}: Array<${
+        type += `${fillIdent(ident)}${key}: Array<${
           value?.baseTypes ? value.baseTypes.join(" & ") + " & " : ""
-        } {\n${writeNestedType(value.subType)}}>;\n`;
+        } {\n${writeNestedType(value.subType, ident + 1)}${fillIdent(
+          ident
+        )}}>;\n`;
       }
     } else if (value?.baseTypes) {
-      type += ` ${key}: ${
+      type += `${fillIdent(ident)}${key}: ${
         value.baseTypes.join(" & ") + " & "
-      } {\n${writeNestedType(value.subType)}};\n`;
+      } {\n${writeNestedType(value.subType, ident + 1)}};\n`;
     } else {
-      type += ` ${key}: {\n`;
-      type += ` ${writeNestedType(value.type)}`;
-      type += `}\n`;
+      type += `${fillIdent(ident)}${key}: {\n`;
+      type += `${writeNestedType(value.type, ident + 1)}`;
+      type += `${fillIdent(ident)}}\n`;
     }
   }
   return type;
 };
 
+const fillIdent = (count: number) => Array(count).fill(" ").join("");
+
 const writeTypes = async () => {
+  const ident = 1;
   let types =
     "export interface Reference<T = string> {\n id: string;\n resourceType: T;\n display?:string;\n}\n\n";
   const schema: any[] = JSON.parse(
@@ -693,7 +746,10 @@ const writeTypes = async () => {
       continue;
     }
     if (element.desc) {
-      types += `/* ${element.desc.replace(/\r?\n|\r/, "")} */\n`;
+      types += `${fillIdent(ident)}/* ${element.desc.replace(
+        /\r?\n|\r/,
+        ""
+      )} */\n`;
     }
     if (element.type) {
       types += `export type ${name} = ${element.type};\n`;
@@ -715,18 +771,17 @@ const writeTypes = async () => {
           : ""
       } {\n`;
       if ("[key:string]?" in element.defs) {
-        types += `[key: string]: any\n`;
+        types += `${fillIdent(ident)}[key: string]: any\n`;
       } else {
-        types += writeNestedType(element.defs);
+        types += writeNestedType(element.defs, ident + 1);
       }
-      types += " }\n\n";
+      types += `}\n\n`;
     }
   }
   await fs.writeFile("generated-types.ts", types);
 };
 
 if (require.main === module) {
-  const start = Date.now();
   console.log("Generating types…");
   parseZenSchema()
     .then(() => writeTypes())
