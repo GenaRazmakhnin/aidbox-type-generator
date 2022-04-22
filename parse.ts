@@ -119,7 +119,7 @@ const zenConfirms: Record<string, string> = {};
 const primitiveTypes: Record<string, any> = {};
 const valuesSets: Record<string, any> = {};
 
-const findConfirms = async (confirms: any = []) => {
+const findConfirms = async (confirms: any = [], resourceName: string) => {
   const result = new Set();
   for (const confirm of confirms) {
     if (confirm !== "zenbox/Resource") {
@@ -160,7 +160,9 @@ const findConfirms = async (confirms: any = []) => {
     }
   }
 
-  return Array.from(result);
+  return [...result].map((r) =>
+    r === "Resource" ? `Resource<'${resourceName}'>` : r
+  );
 };
 
 const parseZenVector = async (
@@ -170,13 +172,16 @@ const parseZenVector = async (
   if (!vector.every["type"] && vector.every["confirms"]) {
     if (vector.every?.["zen.fhir/reference"]?.refers) {
       const refers = await findConfirms(
-        vector.every["zen.fhir/reference"]?.refers
+        vector.every["zen.fhir/reference"]?.refers,
+        resourceName
       );
       return refers?.length
         ? `Reference<'${refers.join("' | '")}'>`
         : `Reference`;
     }
-    return (await findConfirms(vector.every["confirms"])).join(" | ");
+    return (await findConfirms(vector.every["confirms"], resourceName)).join(
+      " | "
+    );
   } else if (vector.every.type === "zen/map") {
     if (vector.every.keys) {
       return await parseZenMap(
@@ -224,7 +229,7 @@ const loadValueSet = async (symbol: string) => {
     data: { entry: concepts },
   } = await box.get(`/Concept?valueset=${url}`);
 
-  const values = concepts.map((e: any) => e.resource.code);
+  const values = concepts.map((e: any) => e.resource.code).filter(Boolean);
   valuesSets[symbol] = values;
   console.log(`ValueSet ${symbol} loaded`);
   return values;
@@ -245,7 +250,9 @@ const parseZenMap = async (
           {
             type:
               values.map((v: string) => `"${v}"`).join(" | ") ||
-              (await findConfirms(value["confirms"])).join(" | ") ||
+              (await findConfirms(value["confirms"], resourceName)).join(
+                " | "
+              ) ||
               "'confirms-any'",
             desc: value["zen/desc"],
           },
@@ -253,7 +260,8 @@ const parseZenMap = async (
       } else if (!value["type"] && value["confirms"]) {
         if (value["zen.fhir/reference"]?.refers) {
           const refers = await findConfirms(
-            value["zen.fhir/reference"]?.refers
+            value["zen.fhir/reference"]?.refers,
+            resourceName
           );
           result.push([
             required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
@@ -269,8 +277,9 @@ const parseZenMap = async (
             required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
             {
               type:
-                (await findConfirms(value["confirms"])).join(" | ") ||
-                "'confirms-any'",
+                (await findConfirms(value["confirms"], resourceName)).join(
+                  " | "
+                ) || "'confirms-any'",
               desc: value["zen/desc"],
             },
           ]);
@@ -278,7 +287,10 @@ const parseZenMap = async (
       } else if (value["type"]) {
         if (value["type"] === "zen/vector") {
           const type = await parseZenVector(value, resourceName);
-          const baseTypes = await findConfirms(value.every?.confirms);
+          const baseTypes = await findConfirms(
+            value.every?.confirms,
+            resourceName
+          );
           if (baseTypes.length < 1 && typeof type === "string") {
             result.push([
               required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
@@ -387,7 +399,7 @@ const parseZenMap = async (
               ]);
             }
           } else if (value["confirms"]) {
-            const baseTypes = await findConfirms(value.confirms);
+            const baseTypes = await findConfirms(value.confirms, resourceName);
             if (value["validation-type"] === "open") {
               result.push([
                 required.includes(key) ? wrapKey(key) : `${wrapKey(key)}?`,
@@ -552,7 +564,6 @@ const parseZenSchema = async () => {
           }`,
       { headers: { "Content-Type": "application/edn" } }
     );
-
     schema[symbol] = definition;
     let type;
 
@@ -616,7 +627,7 @@ const parseZenSchema = async () => {
         }
         const required = definition["require"];
 
-        const confirms = await findConfirms(definition["confirms"]);
+        const confirms = await findConfirms(definition["confirms"], name);
 
         if (
           definition["zen/tags"].includes("zen.fhir/structure-schema") &&
@@ -627,6 +638,7 @@ const parseZenSchema = async () => {
             .split("/")[0]
             .split(".")
             .reverse()[0];
+
           const inlineType = getPrimitiveTypes(definition["type"]);
           primitiveTypes[newName] = inlineType;
 
@@ -668,16 +680,42 @@ const parseZenSchema = async () => {
             name,
             ...normalizeConfirms(confirms, name),
             defs: {
-              "[key:string]?": "any",
+              "[key:string]": "any",
             },
           };
         } else {
-          type = {
-            desc: definition["zen/desc"] || null,
-            name,
-            ...normalizeConfirms(confirms, name),
-            defs: await parseZenMap(definition.keys, required, name),
-          };
+          if (name !== "Reference") {
+            if (name === "Resource") {
+              type = {
+                desc: definition["zen/desc"] || null,
+                name: "Resource<T>",
+                defs: {
+                  ...(await parseZenMap(definition.keys, required, name)),
+                  resourceType: { type: "T" },
+                },
+              };
+            } else if (name === "DomainResource") {
+              type = {
+                desc: definition["zen/desc"] || null,
+                name: "DomainResource",
+                defs: await parseZenMap(definition.keys, required, name),
+              };
+            } else if (definition["zen/tags"].includes("zenbox/persistent")) {
+              type = {
+                desc: definition["zen/desc"] || null,
+                name,
+                extends: [`Resource<'${name}'>`],
+                defs: await parseZenMap(definition.keys, required, name),
+              };
+            } else {
+              type = {
+                desc: definition["zen/desc"] || null,
+                name,
+                ...normalizeConfirms(confirms, name),
+                defs: await parseZenMap(definition.keys, required, name),
+              };
+            }
+          }
         }
       }
     }
@@ -701,10 +739,7 @@ const writeNestedType = (defs: any, ident: number) => {
   let type = "";
   for (const [key, value] of Object.entries<any>(defs)) {
     if (value.desc) {
-      type += `${fillIdent(ident)}/* ${value.desc.replace(
-        /\r?\n|\r/,
-        ""
-      )} */\n`;
+      type += `${fillIdent(ident)}/* ${value.desc} */\n`;
     }
     if (typeof value.type === "string") {
       type += `${fillIdent(ident)}${key}: ${value.type};\n`;
@@ -746,10 +781,7 @@ const writeTypes = async () => {
       continue;
     }
     if (element.desc) {
-      types += `${fillIdent(ident)}/* ${element.desc.replace(
-        /\r?\n|\r/,
-        ""
-      )} */\n`;
+      types += `${fillIdent(ident)}/* ${element.desc} */\n`;
     }
     if (element.type) {
       types += `export type ${name} = ${element.type};\n`;
@@ -770,7 +802,7 @@ const writeTypes = async () => {
           ? "extends " + element.extends
           : ""
       } {\n`;
-      if ("[key:string]?" in element.defs) {
+      if ("[key:string]" in element.defs) {
         types += `${fillIdent(ident)}[key: string]: any\n`;
       } else {
         types += writeNestedType(element.defs, ident + 1);
