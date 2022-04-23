@@ -61,7 +61,7 @@ const namedObject = {
 };
 const result = merge(object1, object2, object3);
 
-const mergeSuite = suite("merge");
+const mergeSuite = suite("Merge");
 
 mergeSuite("merges arrays correctly", () => {
   assert.equal(result.array, ["a", "b", "c"]);

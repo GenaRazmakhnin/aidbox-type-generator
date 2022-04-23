@@ -3,7 +3,7 @@ const assert = require("uvu/assert");
 const MockAdapter = require("axios-mock-adapter");
 const { createBox } = require("../lib/box");
 
-const boxSuite = suite("box");
+const boxSuite = suite("Box");
 const box = createBox({
   url: "http://localhost:8090",
   client: "root",
