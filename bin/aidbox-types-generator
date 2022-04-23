@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+
+const yargs = require("yargs/yargs");
+const { hideBin } = require("yargs/helpers");
+
+yargs(hideBin(process.argv))
+  .usage("Usage: $0 <command> [options]")
+  .command("preload-valuesets", "Load valuesets", (yargs) => {
+    console.log(yargs.argv);
+  })
+  .option("box", {
+    alias: "b",
+    type: "string",
+    demandOption: true,
+    description: "Aidbox URL",
+  })
+  .option("client", {
+    alias: "c",
+    type: "string",
+    demandOption: true,
+    description: "Aidbox client",
+  })
+  .option("secret", {
+    alias: "s",
+    type: "string",
+    demandOption: true,
+    description: "Aidbox secret",
+  })
+  .option("verbose", {
+    alias: "v",
+    type: "boolean",
+    description: "Run with verbose logging",
+  })
+  .parse();
