@@ -81,4 +81,17 @@ helpersSuite("[fillIdent] correct parameter", () => {
   assert.is(helpers.fillIdent(2), "  ");
 });
 
+helpersSuite("[getPrimitiveTypes] general", () => {
+  assert.is(helpers.getPrimitiveTypes("zen/string"), "string", "zen/string");
+  assert.is(helpers.getPrimitiveTypes("zen/boolean"), "boolean");
+  assert.is(helpers.getPrimitiveTypes("zen/date"), "string");
+  assert.is(helpers.getPrimitiveTypes("zen/datetime"), "string");
+  assert.is(helpers.getPrimitiveTypes("zen/number"), "number");
+  assert.is(helpers.getPrimitiveTypes("zen/integer"), "number");
+  assert.is(
+    helpers.getPrimitiveTypes("zen/coll"),
+    "'unknown-primitive(zen/coll)'"
+  );
+});
+
 module.exports = { helpersSuite };

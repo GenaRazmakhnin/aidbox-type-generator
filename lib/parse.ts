@@ -1,50 +1,5 @@
 import * as fs from "fs/promises";
 import axios from "axios";
-import merge from "./merge";
-
-const box = axios.create({
-  baseURL: "http://localhost:8090",
-  auth: {
-    username: "root",
-    password: "secret",
-  },
-});
-
-const loadSymbols = async () => {
-  const {
-    data: { result: ns },
-  } = await box.post("/rpc", {
-    method: "aidbox.zen/namespaces",
-    params: {},
-  });
-  const namespaces = ns.filter(
-    (namespace: string) =>
-      !excludeNamespaces.some((symbol) => symbol.test(namespace))
-  );
-
-  const symbols: string[] = [];
-  for (const namespace of namespaces) {
-    const {
-      data: { result },
-    } = await box.post(
-      "/rpc",
-      `{
-            :method aidbox.zen/symbols
-            :params { :ns ${namespace}}
-        }`,
-      { headers: { "Content-Type": "application/edn" } }
-    );
-    result.map((r: any) => symbols.push(`${namespace}/${r.name}`));
-  }
-  const finalResult = symbols.filter(
-    (s) => !excludedTags.some((exc) => s.startsWith(exc))
-  );
-  //   await fs.writeFile("./symbols.json", JSON.stringify(finalResult));
-  return finalResult;
-};
-
-const capitalize = (str: string): string =>
-  `${str.charAt(0).toUpperCase()}${str.slice(1)}`;
 
 const excludeNamespaces = [
   /^aidbox/,
@@ -513,37 +468,6 @@ const rpcParamsType = (type: string, validationType?: string) => {
       return validationType === "open" ? "Record<string,any>" : "need-map";
     default:
       return "rpc-any";
-  }
-};
-
-const getPrimitiveTypes = (type: string): string => {
-  switch (type) {
-    case "zen/string":
-      return "string";
-    case "zen/boolean":
-      return "boolean";
-    case "zen/date":
-      return "string";
-    case "zen/datetime":
-      return "string";
-    case "zen/number":
-      return "number";
-    case "zen/integer":
-      return "number";
-    default:
-      console.log(type);
-      process.exit(1);
-  }
-};
-
-const normalizeConfirms = (confirms: any, name: string) => {
-  if (confirms?.length === 0) {
-    return {};
-  } else if (confirms.length === 1 && confirms[0] === name) {
-    return {};
-  } else {
-    const cleared = confirms.filter((c: string) => c !== name);
-    return confirms?.length === 0 ? {} : { extends: cleared };
   }
 };
 
