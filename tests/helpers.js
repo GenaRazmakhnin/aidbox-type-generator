@@ -94,4 +94,4 @@ helpersSuite("[getPrimitiveTypes] general", () => {
   );
 });
 
-module.exports = { helpersSuite };
+helpersSuite.run();

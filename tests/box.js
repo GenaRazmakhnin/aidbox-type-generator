@@ -27,4 +27,4 @@ boxSuite("init", async () => {
   mock.reset();
 });
 
-module.exports = { boxSuite };
+boxSuite.run();

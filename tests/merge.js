@@ -137,4 +137,4 @@ mergeSuite("[with options] resets the options after calling it", () => {
   assert.equal(merge(object1, object2, object3).array, ["a", "b", "c"]);
 });
 
-module.exports = { mergeSuite };
+mergeSuite.run();
